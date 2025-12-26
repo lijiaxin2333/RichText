@@ -1,0 +1,73 @@
+name: RichTextDemo
+options:
+  bundleIdPrefix: com.demo
+  deploymentTarget:
+    iOS: "15.0"
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    CLANG_ENABLE_MODULES: YES
+
+packages:
+  RichTextKit:
+    path: ../RichTextKit
+
+targets:
+  RichTextDemo:
+    type: application
+    platform: iOS
+    sources:
+      - path: RichTextDemo
+        excludes:
+          - "**/.DS_Store"
+    dependencies:
+      - package: RichTextKit
+        product: RichTextKit
+      - package: RichTextKit
+        product: YYText
+    settings:
+      base:
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.demo.RichTextDemo
+
+name: RichTextDemo
+options:
+  bundleIdPrefix: com.demo
+  deploymentTarget:
+    iOS: "15.0"
+  xcodeVersion: "15.0"
+  
+settings:
+  base:
+    CLANG_ENABLE_MODULES: YES
+
+packages:
+  RichTextKit:
+    path: ../RichTextKit
+
+targets:
+  RichTextDemo:
+    type: application
+    platform: iOS
+    sources:
+      - path: RichTextDemo
+        excludes:
+          - "**/.DS_Store"
+    dependencies:
+      - package: RichTextKit
+        product: RichTextKit
+      - package: RichTextKit
+        product: YYText
+    settings:
+      base:
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.demo.RichTextDemo
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor

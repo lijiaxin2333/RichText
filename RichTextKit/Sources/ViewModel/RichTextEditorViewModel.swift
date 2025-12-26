@@ -94,17 +94,21 @@ public final class RichTextEditorViewModel: ObservableObject {
     }
     
     private func updateSearchKeyword(range: NSRange, replacementText text: String, currentText: NSAttributedString) {
-        let fullText = currentText.string as NSString
-        let afterTrigger = fullText.substring(from: triggerLocation + 1)
+        let origin = currentText.string as NSString
+        let mutable = NSMutableString(string: origin)
+        mutable.replaceCharacters(in: range, with: text)
         
-        if text.isEmpty {
-            if afterTrigger.count > 0 {
-                searchKeyword = String(afterTrigger.dropLast())
-            } else {
-                searchKeyword = ""
-            }
+        let start = min(triggerLocation + 1, mutable.length)
+        let cursor = min(range.location + (text as NSString).length, mutable.length)
+        if cursor <= start {
+            searchKeyword = ""
         } else {
-            searchKeyword = afterTrigger + text
+            let sub = mutable.substring(with: NSRange(location: start, length: cursor - start))
+            if let stop = sub.firstIndex(where: { $0 == " " || $0 == "\n" || $0 == "\t" }) {
+                searchKeyword = String(sub[..<stop])
+            } else {
+                searchKeyword = sub
+            }
         }
         
         Task {

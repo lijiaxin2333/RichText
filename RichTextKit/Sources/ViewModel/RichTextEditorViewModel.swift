@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import YYText
 
 @MainActor
 public final class RichTextEditorViewModel: ObservableObject {
@@ -8,10 +9,12 @@ public final class RichTextEditorViewModel: ObservableObject {
     @Published public private(set) var activeTrigger: RichTextTrigger?
     @Published public private(set) var suggestionItems: [any SuggestionItem] = []
     @Published public private(set) var searchKeyword: String = ""
+    @Published public internal(set) var pendingAttributedText: NSAttributedString?
     
     private var triggerLocation: Int = 0
     
     private let configuration: RichTextConfiguration
+    private var defaultFont: UIFont = .systemFont(ofSize: 16)
     
     public init(configuration: RichTextConfiguration) {
         self.configuration = configuration
@@ -27,6 +30,25 @@ public final class RichTextEditorViewModel: ObservableObject {
     
     public func getConfiguration() -> RichTextConfiguration {
         configuration
+    }
+    
+    public func setFont(_ font: UIFont) {
+        defaultFont = font
+    }
+    
+    public func setContent(_ content: RichTextContent) {
+        let attributedText = buildAttributedText(from: content)
+        pendingAttributedText = attributedText
+        self.content = content
+    }
+    
+    public func clearContent() {
+        pendingAttributedText = NSAttributedString()
+        content = RichTextContent()
+    }
+    
+    public func clearPendingText() {
+        pendingAttributedText = nil
     }
     
     public func shouldChangeText(in range: NSRange, replacementText text: String, currentText: NSAttributedString) -> Bool {
@@ -70,6 +92,44 @@ public final class RichTextEditorViewModel: ObservableObject {
             .richTextItemId: item.id
         ]
         return NSAttributedString(string: text, attributes: attributes)
+    }
+    
+    private func buildAttributedText(from content: RichTextContent) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        
+        for item in content.items {
+            if item.isText {
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: defaultFont,
+                    .foregroundColor: UIColor.label
+                ]
+                result.append(NSAttributedString(string: item.displayText, attributes: attrs))
+            } else {
+                let trigger = configuration.allTriggers.first { $0.tokenType == item.type }
+                let tokenColor = trigger?.tokenColor ?? UIColor.systemBlue
+                
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: defaultFont,
+                    .foregroundColor: tokenColor,
+                    .richTextItemType: item.type,
+                    .richTextItemId: item.data
+                ]
+                let tokenAttrStr = NSMutableAttributedString(string: item.displayText, attributes: attrs)
+                
+                let binding = YYTextBinding(deleteConfirm: true)
+                tokenAttrStr.yy_setTextBinding(binding, range: NSRange(location: 0, length: tokenAttrStr.length))
+                
+                result.append(tokenAttrStr)
+                
+                let spaceAttrs: [NSAttributedString.Key: Any] = [
+                    .font: defaultFont,
+                    .foregroundColor: UIColor.label
+                ]
+                result.append(NSAttributedString(string: " ", attributes: spaceAttrs))
+            }
+        }
+        
+        return result
     }
     
     private func updateSearchKeyword(range: NSRange, replacementText text: String, currentText: NSAttributedString) {

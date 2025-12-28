@@ -75,10 +75,11 @@ struct ContentView: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(Color.white.opacity(0.7))
             
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 FeatureBadge(icon: "at", text: "@提及", color: Color(hex: "3498db"))
                 FeatureBadge(icon: "number", text: "#话题", color: Color(hex: "e67e22"))
                 FeatureBadge(icon: "shield.fill", text: "删除保护", color: Color(hex: "9b59b6"))
+                FeatureBadge(icon: "arrow.down.doc", text: "数据回写", color: Color(hex: "2ecc71"))
             }
             .padding(.top, 4)
         }
@@ -239,43 +240,132 @@ struct ContentView: View {
     }
     
     private var actionSection: some View {
-        HStack(spacing: 16) {
-            Button(action: {}) {
-                HStack {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                    Text("清空")
+        VStack(spacing: 12) {
+            HStack(spacing: 16) {
+                Button(action: { viewModel.clearContent() }) {
+                    HStack {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                        Text("清空")
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Color(hex: "e74c3c"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color(hex: "e74c3c"), lineWidth: 1.5)
+                    )
                 }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(Color(hex: "e74c3c"))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(hex: "e74c3c"), lineWidth: 1.5)
-                )
+                
+                Button(action: {}) {
+                    HStack {
+                        Image(systemName: "paperplane.fill")
+                        Text("发布")
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "e94560"), Color(hex: "f39c12")],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(12)
+                }
             }
             
-            Button(action: {}) {
-                HStack {
-                    Image(systemName: "paperplane.fill")
-                    Text("发布")
-                }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(
-                    LinearGradient(
-                        colors: [Color(hex: "e94560"), Color(hex: "f39c12")],
-                        startPoint: .leading,
-                        endPoint: .trailing
+            HStack(spacing: 12) {
+                Button(action: { loadMockData(type: 1) }) {
+                    VStack(spacing: 4) {
+                        Image(systemName: "1.circle.fill")
+                            .font(.system(size: 20))
+                        Text("示例1")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundColor(Color(hex: "2ecc71"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color(hex: "2ecc71"), lineWidth: 1.5)
                     )
-                )
-                .cornerRadius(12)
+                }
+                
+                Button(action: { loadMockData(type: 2) }) {
+                    VStack(spacing: 4) {
+                        Image(systemName: "2.circle.fill")
+                            .font(.system(size: 20))
+                        Text("示例2")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundColor(Color(hex: "3498db"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color(hex: "3498db"), lineWidth: 1.5)
+                    )
+                }
+                
+                Button(action: { loadMockData(type: 3) }) {
+                    VStack(spacing: 4) {
+                        Image(systemName: "3.circle.fill")
+                            .font(.system(size: 20))
+                        Text("示例3")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundColor(Color(hex: "e67e22"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color(hex: "e67e22"), lineWidth: 1.5)
+                    )
+                }
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
+    }
+    
+    private func loadMockData(type: Int) {
+        let content: RichTextContent
+        switch type {
+        case 1:
+            content = RichTextContent(items: [
+                .text("大家好，我是"),
+                .mention(id: "1", name: "张三"),
+                .text("今天给大家推荐"),
+                .topic(id: "1", name: "热门话题"),
+                .text("欢迎点赞关注！")
+            ])
+        case 2:
+            content = RichTextContent(items: [
+                .text("周末活动通知："),
+                .mention(id: "2", name: "李四"),
+                .mention(id: "3", name: "王五"),
+                .text("一起参加"),
+                .topic(id: "3", name: "科技前沿"),
+                .text("的线下活动吧！")
+            ])
+        case 3:
+            content = RichTextContent(items: [
+                .topic(id: "2", name: "今日推荐"),
+                .text("分享给"),
+                .mention(id: "4", name: "赵六"),
+                .mention(id: "5", name: "钱七"),
+                .mention(id: "6", name: "孙八"),
+                .text("看看这个"),
+                .topic(id: "4", name: "生活日常"),
+                .text("真的太有趣了！")
+            ])
+        default:
+            content = RichTextContent()
+        }
+        viewModel.setContent(content)
     }
     
     private var panelTypeText: String {

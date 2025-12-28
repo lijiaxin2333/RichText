@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import YYText
+import Combine
 
 public struct RichTextEditorView<PanelContent: View>: View {
     
@@ -24,6 +25,7 @@ public struct RichTextEditorView<PanelContent: View>: View {
         self.font = font
         self.textColor = textColor
         self.panelBuilder = panelBuilder
+        viewModel.setFont(font)
     }
     
     public var body: some View {
@@ -77,6 +79,7 @@ public extension RichTextEditorView where PanelContent == AnyView {
                 )
             )
         }
+        viewModel.setFont(font)
     }
 }
 
@@ -99,6 +102,7 @@ struct YYTextEditorRepresentable: UIViewRepresentable {
         textView.backgroundColor = .clear
         textView.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 12, right: 8)
         context.coordinator.textView = textView
+        context.coordinator.setupContentObserver()
         DispatchQueue.main.async { onCoordinatorCreated(context.coordinator) }
         return textView
     }
@@ -116,10 +120,30 @@ public final class RichTextEditorCoordinator: NSObject, YYTextViewDelegate {
     weak var textView: YYTextView?
     private let viewModel: RichTextEditorViewModel
     private let font: UIFont
+    private var cancellables = Set<AnyCancellable>()
     
     init(viewModel: RichTextEditorViewModel, font: UIFont) {
         self.viewModel = viewModel
         self.font = font
+    }
+    
+    func setupContentObserver() {
+        viewModel.$pendingAttributedText
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] attributedText in
+                self?.applyPendingText(attributedText)
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func applyPendingText(_ attributedText: NSAttributedString) {
+        guard let textView = textView else { return }
+        textView.attributedText = attributedText
+        textView.selectedRange = NSRange(location: attributedText.length, length: 0)
+        resetTypingAttributes(textView)
+        viewModel.clearPendingText()
+        viewModel.textDidChange(textView.attributedText ?? NSAttributedString())
     }
     
     public func textView(_ textView: YYTextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
@@ -157,7 +181,7 @@ public final class RichTextEditorCoordinator: NSObject, YYTextViewDelegate {
         viewModel.textDidChange(textView.attributedText ?? NSAttributedString())
     }
     
-    private func resetTypingAttributes(_ textView: YYTextView) {
+    func resetTypingAttributes(_ textView: YYTextView) {
         textView.typingAttributes = [
             NSAttributedString.Key.font.rawValue: font,
             NSAttributedString.Key.foregroundColor.rawValue: UIColor.label

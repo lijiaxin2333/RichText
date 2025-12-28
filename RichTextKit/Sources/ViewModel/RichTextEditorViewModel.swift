@@ -1,53 +1,44 @@
 import Foundation
 import UIKit
 
-public enum SuggestionPanelType: Equatable {
-    case none
-    case mention
-    case topic
-}
-
 @MainActor
 public final class RichTextEditorViewModel: ObservableObject {
     
     @Published public private(set) var content: RichTextContent = RichTextContent()
-    @Published public private(set) var suggestionPanelType: SuggestionPanelType = .none
-    @Published public private(set) var mentionItems: [MentionItem] = []
-    @Published public private(set) var topicItems: [TopicItem] = []
+    @Published public private(set) var activeTrigger: RichTextTrigger?
+    @Published public private(set) var suggestionItems: [any SuggestionItem] = []
     @Published public private(set) var searchKeyword: String = ""
     
     private var triggerLocation: Int = 0
     
-    private let factory: SuggestionProviderFactory
-    private lazy var mentionProvider: MentionDataProvider = factory.makeMentionProvider()
-    private lazy var topicProvider: TopicDataProvider = factory.makeTopicProvider()
+    private let configuration: RichTextConfiguration
     
-    public init(factory: SuggestionProviderFactory) {
-        self.factory = factory
+    public init(configuration: RichTextConfiguration) {
+        self.configuration = configuration
+    }
+    
+    public convenience init(factory: SuggestionProviderFactory) {
+        self.init(configuration: .defaultConfiguration(factory: factory))
     }
     
     public func getTriggerLocation() -> Int {
         triggerLocation
     }
     
+    public func getConfiguration() -> RichTextConfiguration {
+        configuration
+    }
+    
     public func shouldChangeText(in range: NSRange, replacementText text: String, currentText: NSAttributedString) -> Bool {
-        if text == "@" {
+        if let trigger = configuration.trigger(for: text) {
             triggerLocation = range.location
-            suggestionPanelType = .mention
+            activeTrigger = trigger
             searchKeyword = ""
-            Task { await fetchMentions(keyword: "") }
+            Task { await fetchSuggestions(trigger: trigger, keyword: "") }
             return true
         }
         
-        if text == "#" {
-            triggerLocation = range.location
-            suggestionPanelType = .topic
-            searchKeyword = ""
-            Task { await fetchTopics(keyword: "") }
-            return true
-        }
-        
-        if suggestionPanelType != .none {
+        if activeTrigger != nil {
             if text == " " || text == "\n" {
                 dismissSuggestionPanel()
             } else if text.isEmpty && range.location <= triggerLocation {
@@ -65,29 +56,17 @@ public final class RichTextEditorViewModel: ObservableObject {
     }
     
     public func dismissSuggestionPanel() {
-        suggestionPanelType = .none
-        mentionItems = []
-        topicItems = []
+        activeTrigger = nil
+        suggestionItems = []
         searchKeyword = ""
     }
     
-    public func createMentionToken(_ item: MentionItem, font: UIFont) -> NSAttributedString {
-        let text = "@\(item.name)"
+    public func createToken(for item: any SuggestionItem, trigger: RichTextTrigger, font: UIFont) -> NSAttributedString {
+        let text = trigger.formatTokenText(item: item)
         let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: UIColor.systemBlue,
+            .foregroundColor: trigger.tokenColor,
             .font: font,
-            .richTextItemType: RichTextItemType.mention,
-            .richTextItemId: item.id
-        ]
-        return NSAttributedString(string: text, attributes: attributes)
-    }
-    
-    public func createTopicToken(_ item: TopicItem, font: UIFont) -> NSAttributedString {
-        let text = "#\(item.name)#"
-        let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: UIColor.systemBlue,
-            .font: font,
-            .richTextItemType: RichTextItemType.topic,
+            .richTextItemType: trigger.tokenType,
             .richTextItemId: item.id
         ]
         return NSAttributedString(string: text, attributes: attributes)
@@ -111,24 +90,13 @@ public final class RichTextEditorViewModel: ObservableObject {
             }
         }
         
-        Task {
-            switch suggestionPanelType {
-            case .mention:
-                await fetchMentions(keyword: searchKeyword)
-            case .topic:
-                await fetchTopics(keyword: searchKeyword)
-            case .none:
-                break
-            }
+        if let trigger = activeTrigger {
+            Task { await fetchSuggestions(trigger: trigger, keyword: searchKeyword) }
         }
     }
     
-    private func fetchMentions(keyword: String) async {
-        mentionItems = await mentionProvider.fetchMentions(keyword: keyword)
-    }
-    
-    private func fetchTopics(keyword: String) async {
-        topicItems = await topicProvider.fetchTopics(keyword: keyword)
+    private func fetchSuggestions(trigger: RichTextTrigger, keyword: String) async {
+        suggestionItems = await trigger.dataProvider.fetchSuggestions(keyword: keyword)
     }
     
     private func parseContent(from attributedText: NSAttributedString) {
@@ -136,21 +104,14 @@ public final class RichTextEditorViewModel: ObservableObject {
         var currentText = ""
         
         attributedText.enumerateAttributes(in: NSRange(location: 0, length: attributedText.length)) { attrs, range, _ in
-            if let itemType = attrs[.richTextItemType] as? RichTextItemType,
+            if let itemType = attrs[.richTextItemType] as? String,
                let itemId = attrs[.richTextItemId] as? String {
                 if !currentText.isEmpty {
                     items.append(.text(currentText))
                     currentText = ""
                 }
                 let displayText = (attributedText.string as NSString).substring(with: range)
-                switch itemType {
-                case .mention:
-                    items.append(RichTextItem(type: .mention, displayText: displayText, data: itemId))
-                case .topic:
-                    items.append(RichTextItem(type: .topic, displayText: displayText, data: itemId))
-                case .text:
-                    currentText += displayText
-                }
+                items.append(RichTextItem(type: itemType, displayText: displayText, data: itemId))
             } else {
                 let text = (attributedText.string as NSString).substring(with: range)
                 currentText += text
@@ -169,5 +130,3 @@ public extension NSAttributedString.Key {
     static let richTextItemType = NSAttributedString.Key("richTextItemType")
     static let richTextItemId = NSAttributedString.Key("richTextItemId")
 }
-
-

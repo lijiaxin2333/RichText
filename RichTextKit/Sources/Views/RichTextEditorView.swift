@@ -2,20 +2,28 @@ import SwiftUI
 import UIKit
 import YYText
 
-public struct RichTextEditorView: View {
+public struct RichTextEditorView<PanelContent: View>: View {
     
-    @StateObject private var viewModel: RichTextEditorViewModel
+    @ObservedObject private var viewModel: RichTextEditorViewModel
     @State private var coordinator: RichTextEditorCoordinator?
     
     private let placeholder: String
     private let font: UIFont
     private let textColor: UIColor
+    private let panelBuilder: (RichTextTrigger, [any SuggestionItem], @escaping (any SuggestionItem) -> Void, @escaping () -> Void) -> PanelContent
     
-    public init(viewModel: RichTextEditorViewModel, placeholder: String = "请输入内容...", font: UIFont = .systemFont(ofSize: 16), textColor: UIColor = .label) {
-        self._viewModel = StateObject(wrappedValue: viewModel)
+    public init(
+        viewModel: RichTextEditorViewModel,
+        placeholder: String = "请输入内容...",
+        font: UIFont = .systemFont(ofSize: 16),
+        textColor: UIColor = .label,
+        @ViewBuilder panelBuilder: @escaping (RichTextTrigger, [any SuggestionItem], @escaping (any SuggestionItem) -> Void, @escaping () -> Void) -> PanelContent
+    ) {
+        self.viewModel = viewModel
         self.placeholder = placeholder
         self.font = font
         self.textColor = textColor
+        self.panelBuilder = panelBuilder
     }
     
     public var body: some View {
@@ -30,31 +38,44 @@ public struct RichTextEditorView: View {
                 }
             )
             
-            if viewModel.suggestionPanelType == .mention && !viewModel.mentionItems.isEmpty {
-                MentionPanel(
-                    items: viewModel.mentionItems,
-                    onSelect: { item in
-                        coordinator?.insertMention(item)
+            if let trigger = viewModel.activeTrigger, !viewModel.suggestionItems.isEmpty {
+                panelBuilder(
+                    trigger,
+                    viewModel.suggestionItems,
+                    { item in
+                        coordinator?.insertToken(item: item, trigger: trigger)
                         viewModel.dismissSuggestionPanel()
                     },
-                    onDismiss: { viewModel.dismissSuggestionPanel() }
+                    { viewModel.dismissSuggestionPanel() }
                 )
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
             }
-            
-            if viewModel.suggestionPanelType == .topic && !viewModel.topicItems.isEmpty {
-                TopicPanel(
-                    items: viewModel.topicItems,
-                    onSelect: { item in
-                        coordinator?.insertTopic(item)
-                        viewModel.dismissSuggestionPanel()
-                    },
-                    onDismiss: { viewModel.dismissSuggestionPanel() }
+        }
+    }
+}
+
+public extension RichTextEditorView where PanelContent == AnyView {
+    
+    init(
+        viewModel: RichTextEditorViewModel,
+        placeholder: String = "请输入内容...",
+        font: UIFont = .systemFont(ofSize: 16),
+        textColor: UIColor = .label
+    ) {
+        self.viewModel = viewModel
+        self.placeholder = placeholder
+        self.font = font
+        self.textColor = textColor
+        self.panelBuilder = { trigger, items, onSelect, onDismiss in
+            AnyView(
+                DefaultSuggestionPanel(
+                    trigger: trigger,
+                    items: items,
+                    onSelect: onSelect,
+                    onDismiss: onDismiss
                 )
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-            }
+            )
         }
     }
 }
@@ -114,36 +135,13 @@ public final class RichTextEditorCoordinator: NSObject, YYTextViewDelegate {
     }
     
     @MainActor
-    func insertMention(_ item: MentionItem) {
+    func insertToken(item: any SuggestionItem, trigger: RichTextTrigger) {
         guard let textView = textView else { return }
         let triggerLocation = viewModel.getTriggerLocation()
         let currentLocation = textView.selectedRange.location
         let rangeToReplace = NSRange(location: triggerLocation, length: max(0, currentLocation - triggerLocation))
         
-        let token = viewModel.createMentionToken(item, font: font)
-        let insert = NSMutableAttributedString(attributedString: token)
-        insert.append(NSAttributedString(string: " ", attributes: [.font: font, .foregroundColor: UIColor.label]))
-        
-        let mutable = NSMutableAttributedString(attributedString: textView.attributedText ?? NSAttributedString())
-        mutable.replaceCharacters(in: rangeToReplace, with: insert)
-        
-        let binding = YYTextBinding(deleteConfirm: true)
-        mutable.yy_setTextBinding(binding, range: NSRange(location: triggerLocation, length: token.length))
-        
-        textView.attributedText = mutable
-        textView.selectedRange = NSRange(location: triggerLocation + insert.length, length: 0)
-        resetTypingAttributes(textView)
-        viewModel.textDidChange(textView.attributedText ?? NSAttributedString())
-    }
-    
-    @MainActor
-    func insertTopic(_ item: TopicItem) {
-        guard let textView = textView else { return }
-        let triggerLocation = viewModel.getTriggerLocation()
-        let currentLocation = textView.selectedRange.location
-        let rangeToReplace = NSRange(location: triggerLocation, length: max(0, currentLocation - triggerLocation))
-        
-        let token = viewModel.createTopicToken(item, font: font)
+        let token = viewModel.createToken(for: item, trigger: trigger, font: font)
         let insert = NSMutableAttributedString(attributedString: token)
         insert.append(NSAttributedString(string: " ", attributes: [.font: font, .foregroundColor: UIColor.label]))
         

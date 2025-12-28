@@ -4,8 +4,23 @@ import RichTextKit
 
 struct ContentView: View {
     
-    @StateObject private var viewModel = RichTextEditorViewModel(factory: MockSuggestionProviderFactory())
+    @StateObject private var viewModel: RichTextEditorViewModel
     @State private var showJSON = false
+    
+    init() {
+        let config = RichTextConfiguration()
+        let mentionProvider = MockMentionProvider()
+        let topicProvider = MockTopicProvider()
+        
+        config.register(MentionTrigger(
+            dataProvider: MentionDataProviderWrapper(mentionProvider)
+        ))
+        config.register(TopicTrigger(
+            dataProvider: TopicDataProviderWrapper(topicProvider)
+        ))
+        
+        _viewModel = StateObject(wrappedValue: RichTextEditorViewModel(configuration: config))
+    }
     
     var body: some View {
         NavigationView {
@@ -264,18 +279,20 @@ struct ContentView: View {
     }
     
     private var panelTypeText: String {
-        switch viewModel.suggestionPanelType {
-        case .none: return "无"
-        case .mention: return "@提及面板"
-        case .topic: return "#话题面板"
+        guard let trigger = viewModel.activeTrigger else { return "无" }
+        switch trigger.tokenType {
+        case "mention": return "@提及面板"
+        case "topic": return "#话题面板"
+        default: return "\(trigger.triggerCharacter) 面板"
         }
     }
     
     private var panelTypeColor: Color {
-        switch viewModel.suggestionPanelType {
-        case .none: return Color.white.opacity(0.5)
-        case .mention: return Color(hex: "3498db")
-        case .topic: return Color(hex: "e67e22")
+        guard let trigger = viewModel.activeTrigger else { return Color.white.opacity(0.5) }
+        switch trigger.tokenType {
+        case "mention": return Color(hex: "3498db")
+        case "topic": return Color(hex: "e67e22")
+        default: return Color(trigger.tokenColor)
         }
     }
     

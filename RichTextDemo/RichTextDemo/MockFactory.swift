@@ -1,11 +1,6 @@
 import Foundation
 import RichTextKit
 
-final class MockSuggestionProviderFactory: SuggestionProviderFactory {
-    func makeMentionProvider() -> MentionDataProvider { MockMentionProvider() }
-    func makeTopicProvider() -> TopicDataProvider { MockTopicProvider() }
-}
-
 final class MockMentionProvider: MentionDataProvider {
     private let items: [MentionItem] = [
         MentionItem(id: "1", name: "张三"),
@@ -35,5 +30,3 @@ final class MockTopicProvider: TopicDataProvider {
         return items.filter { $0.name.contains(keyword) }
     }
 }
-
-

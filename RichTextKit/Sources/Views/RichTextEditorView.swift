@@ -40,7 +40,7 @@ public struct RichTextEditorView<PanelContent: View>: View {
                 }
             )
             
-            if let trigger = viewModel.activeTrigger, !viewModel.suggestionItems.isEmpty {
+            if viewModel.isEditable, let trigger = viewModel.activeTrigger, !viewModel.suggestionItems.isEmpty {
                 panelBuilder(
                     trigger,
                     viewModel.suggestionItems,
@@ -101,13 +101,17 @@ struct YYTextEditorRepresentable: UIViewRepresentable {
         textView.placeholderTextColor = .placeholderText
         textView.backgroundColor = .clear
         textView.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 12, right: 8)
+        textView.isEditable = viewModel.isEditable
         context.coordinator.textView = textView
-        context.coordinator.setupContentObserver()
+        context.coordinator.setupObservers()
         DispatchQueue.main.async { onCoordinatorCreated(context.coordinator) }
         return textView
     }
     
     func updateUIView(_ uiView: YYTextView, context: Context) {
+        if uiView.isEditable != viewModel.isEditable {
+            uiView.isEditable = viewModel.isEditable
+        }
     }
     
     func makeCoordinator() -> RichTextEditorCoordinator {
@@ -127,12 +131,19 @@ public final class RichTextEditorCoordinator: NSObject, YYTextViewDelegate {
         self.font = font
     }
     
-    func setupContentObserver() {
+    func setupObservers() {
         viewModel.$pendingAttributedText
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] attributedText in
                 self?.applyPendingText(attributedText)
+            }
+            .store(in: &cancellables)
+        
+        viewModel.$isEditable
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isEditable in
+                self?.textView?.isEditable = isEditable
             }
             .store(in: &cancellables)
     }

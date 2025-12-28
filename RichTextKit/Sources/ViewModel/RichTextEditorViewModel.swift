@@ -10,6 +10,7 @@ public final class RichTextEditorViewModel: ObservableObject {
     @Published public private(set) var suggestionItems: [any SuggestionItem] = []
     @Published public private(set) var searchKeyword: String = ""
     @Published public internal(set) var pendingAttributedText: NSAttributedString?
+    @Published public var isEditable: Bool = true
     
     private var triggerLocation: Int = 0
     

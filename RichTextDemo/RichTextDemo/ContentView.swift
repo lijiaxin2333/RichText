@@ -75,11 +75,14 @@ struct ContentView: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(Color.white.opacity(0.7))
             
-            HStack(spacing: 12) {
-                FeatureBadge(icon: "at", text: "@提及", color: Color(hex: "3498db"))
-                FeatureBadge(icon: "number", text: "#话题", color: Color(hex: "e67e22"))
-                FeatureBadge(icon: "shield.fill", text: "删除保护", color: Color(hex: "9b59b6"))
-                FeatureBadge(icon: "arrow.down.doc", text: "数据回写", color: Color(hex: "2ecc71"))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    FeatureBadge(icon: "at", text: "@提及", color: Color(hex: "3498db"))
+                    FeatureBadge(icon: "number", text: "#话题", color: Color(hex: "e67e22"))
+                    FeatureBadge(icon: "shield.fill", text: "删除保护", color: Color(hex: "9b59b6"))
+                    FeatureBadge(icon: "arrow.down.doc", text: "数据回写", color: Color(hex: "2ecc71"))
+                    FeatureBadge(icon: "lock.open", text: "读写控制", color: Color(hex: "e74c3c"))
+                }
             }
             .padding(.top, 4)
         }
@@ -90,14 +93,32 @@ struct ContentView: View {
     private var editorSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Image(systemName: "square.and.pencil")
-                    .foregroundColor(Color(hex: "e94560"))
-                Text("编辑区域")
+                Image(systemName: viewModel.isEditable ? "square.and.pencil" : "lock.fill")
+                    .foregroundColor(viewModel.isEditable ? Color(hex: "e94560") : Color(hex: "e74c3c"))
+                Text(viewModel.isEditable ? "编辑区域" : "只读模式")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.white)
+                
+                Spacer()
+                
+                Button(action: { viewModel.isEditable.toggle() }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: viewModel.isEditable ? "lock.open.fill" : "lock.fill")
+                            .font(.system(size: 12))
+                        Text(viewModel.isEditable ? "可编辑" : "只读")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundColor(viewModel.isEditable ? Color(hex: "2ecc71") : Color(hex: "e74c3c"))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule()
+                            .fill(viewModel.isEditable ? Color(hex: "2ecc71").opacity(0.2) : Color(hex: "e74c3c").opacity(0.2))
+                    )
+                }
             }
             
-            Text("输入 @ 选择联系人 · 输入 # 选择话题")
+            Text(viewModel.isEditable ? "输入 @ 选择联系人 · 输入 # 选择话题" : "当前为只读模式，无法编辑")
                 .font(.system(size: 12))
                 .foregroundColor(Color.white.opacity(0.5))
             

@@ -151,13 +151,6 @@ public final class RichTextEditorCoordinator: NSObject, YYTextViewDelegate {
             }
             .store(in: &cancellables)
         
-        viewModel.$isEditable
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isEditable in
-                self?.textView?.isEditable = isEditable
-            }
-            .store(in: &cancellables)
-
         setupTokenTapGestureIfNeeded()
     }
 

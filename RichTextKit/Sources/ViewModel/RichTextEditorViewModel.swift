@@ -121,14 +121,18 @@ public final class RichTextEditorViewModel: ObservableObject {
                 let tokenColor = trigger?.tokenColor ?? UIColor.systemBlue
                 
                 let tokenAttrStr = makeTokenAttributedString(item: item, tokenColor: tokenColor, font: defaultFont)
-                
+                let tokenStart = result.length
                 result.append(tokenAttrStr)
                 
                 let spaceAttrs: [NSAttributedString.Key: Any] = [
                     .font: defaultFont,
                     .foregroundColor: UIColor.label
                 ]
+                // 与手动插入 token 对齐：token 后追加一个空格，并将 binding 覆盖到 token+空格，
+                // 这样用户第一次按退格就会触发删除保护（尤其是 attachment token）。
                 result.append(NSAttributedString(string: " ", attributes: spaceAttrs))
+                let binding = YYTextBinding(deleteConfirm: true)
+                result.yy_setTextBinding(binding, range: NSRange(location: tokenStart, length: tokenAttrStr.length + 1))
             }
         }
         

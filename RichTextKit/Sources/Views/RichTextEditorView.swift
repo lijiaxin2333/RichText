@@ -184,7 +184,7 @@ public final class RichTextEditorCoordinator: NSObject, YYTextViewDelegate {
         mutable.replaceCharacters(in: rangeToReplace, with: insert)
         
         let binding = YYTextBinding(deleteConfirm: true)
-        mutable.yy_setTextBinding(binding, range: NSRange(location: triggerLocation, length: token.length))
+        mutable.yy_setTextBinding(binding, range: NSRange(location: triggerLocation, length: insert.length))
         
         textView.attributedText = mutable
         textView.selectedRange = NSRange(location: triggerLocation + insert.length, length: 0)

@@ -6,6 +6,8 @@ struct ContentView: View {
     
     @StateObject private var viewModel: RichTextEditorViewModel
     @State private var showJSON = false
+    @State private var useCustomTokens = false
+    private let config: RichTextConfiguration
     
     init() {
         let config = RichTextConfiguration()
@@ -19,6 +21,7 @@ struct ContentView: View {
             dataProvider: TopicDataProviderWrapper(topicProvider)
         ))
         
+        self.config = config
         _viewModel = StateObject(wrappedValue: RichTextEditorViewModel(configuration: config))
     }
     
@@ -158,6 +161,11 @@ struct ContentView: View {
                     value: viewModel.searchKeyword.isEmpty ? "无" : "\"\(viewModel.searchKeyword)\"",
                     color: Color(hex: "f39c12")
                 )
+                StatusItem(
+                    label: "Token 样式",
+                    value: useCustomTokens ? "自定义" : "默认",
+                    color: useCustomTokens ? Color(hex: "e94560") : Color.white.opacity(0.6)
+                )
             }
             
             Text("删除规则：先删空格 → 触发删除保护 → 再删除token")
@@ -262,6 +270,27 @@ struct ContentView: View {
     
     private var actionSection: some View {
         VStack(spacing: 12) {
+            Button(action: { toggleCustomTokens() }) {
+                HStack(spacing: 8) {
+                    Image(systemName: useCustomTokens ? "sparkles" : "paintbrush")
+                    Text(useCustomTokens ? "切换为默认样式" : "启用自定义数据 + SwiftUI 样式")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(
+                    LinearGradient(
+                        colors: useCustomTokens
+                        ? [Color(hex: "95a5a6"), Color(hex: "7f8c8d")]
+                        : [Color(hex: "e94560"), Color(hex: "3498db")],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .cornerRadius(12)
+            }
+            
             HStack(spacing: 16) {
                 Button(action: { viewModel.clearContent() }) {
                     HStack {
@@ -416,6 +445,134 @@ struct ContentView: View {
         }
         return "{}"
     }
+    
+    private func toggleCustomTokens() {
+        useCustomTokens.toggle()
+        applyTokenCustomization(useCustomTokens)
+        viewModel.setContent(viewModel.content) // 触发当前内容重绘
+    }
+    
+    private func applyTokenCustomization(_ enabled: Bool) {
+        if enabled {
+            config.registerToken(type: "mention", config: mentionCustomConfig())
+            config.registerToken(type: "topic", config: topicCustomConfig())
+        } else {
+            config.unregisterToken(type: "mention")
+            config.unregisterToken(type: "topic")
+        }
+    }
+    
+    private func mentionCustomConfig() -> RichTextTokenConfig {
+        RichTextTokenConfig(
+            dataBuilder: { suggestion in
+                let name = suggestion.displayName
+                let id = suggestion.id
+                let payload = CustomTokenPayload(id: id, name: name, extra: "vip")
+                let data = encodePayload(payload) ?? id
+                return RichTextItem(type: "mention", displayText: "@\(name)", data: data)
+            },
+            payloadDecoder: { data in decodePayload(data)?.asDict },
+            viewBuilder: { context, _ in
+                let name = context.payload?["name"] ?? context.item.displayText.replacingOccurrences(of: "@", with: "")
+                let id = context.payload?["id"] ?? context.item.data
+                return RichTextTokenView(
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(
+                                LinearGradient(colors: [Color(hex: "e94560"), Color(hex: "3498db")],
+                                               startPoint: .topLeading,
+                                               endPoint: .bottomTrailing)
+                            )
+                            .frame(width: 28, height: 28)
+                            .overlay(
+                                Text(String(name.prefix(1)))
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.white)
+                            )
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(name)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white)
+                            Text("ID: \(id)")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.12))
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                            )
+                    )
+                )
+            }
+        )
+    }
+    
+    private func topicCustomConfig() -> RichTextTokenConfig {
+        RichTextTokenConfig(
+            dataBuilder: { suggestion in
+                let name = suggestion.displayName
+                let id = suggestion.id
+                let payload = CustomTokenPayload(id: id, name: name, extra: "hot")
+                let data = encodePayload(payload) ?? id
+                return RichTextItem(type: "topic", displayText: "#\(name)#", data: data)
+            },
+            payloadDecoder: { data in decodePayload(data)?.asDict },
+            viewBuilder: { context, _ in
+                let name = context.payload?["name"] ?? context.item.displayText.replacingOccurrences(of: "#", with: "")
+                let id = context.payload?["id"] ?? context.item.data
+                return RichTextTokenView(
+                    HStack(spacing: 8) {
+                        Text("#")
+                            .font(.system(size: 16, weight: .heavy))
+                            .foregroundColor(.white)
+                            .padding(6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(
+                                        LinearGradient(colors: [Color(hex: "f39c12"), Color(hex: "e67e22")],
+                                                       startPoint: .topLeading,
+                                                       endPoint: .bottomTrailing)
+                                    )
+                            )
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(name)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white)
+                            Text("话题ID: \(id)")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color(hex: "e67e22").opacity(0.18))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color(hex: "f39c12").opacity(0.35), lineWidth: 1)
+                            )
+                    )
+                )
+            }
+        )
+    }
+    
+    private func encodePayload(_ payload: CustomTokenPayload) -> String? {
+        guard let data = try? JSONEncoder().encode(payload) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+    
+    private func decodePayload(_ text: String) -> CustomTokenPayload? {
+        guard let data = text.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(CustomTokenPayload.self, from: data)
+    }
 }
 
 struct FeatureBadge: View {
@@ -480,6 +637,18 @@ struct PreviewRow: View {
                     .lineLimit(3)
             }
         }
+    }
+}
+
+struct CustomTokenPayload: Codable {
+    let id: String
+    let name: String
+    let extra: String?
+    
+    var asDict: [String: String] {
+        var result: [String: String] = ["id": id, "name": name]
+        if let extra = extra { result["extra"] = extra }
+        return result
     }
 }
 

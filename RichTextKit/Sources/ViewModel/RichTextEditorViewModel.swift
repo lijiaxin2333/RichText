@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import SwiftUI
 import YYText
 
 @MainActor
@@ -85,14 +86,8 @@ public final class RichTextEditorViewModel: ObservableObject {
     }
     
     public func createToken(for item: any SuggestionItem, trigger: RichTextTrigger, font: UIFont) -> NSAttributedString {
-        let text = trigger.formatTokenText(item: item)
-        let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: trigger.tokenColor,
-            .font: font,
-            .richTextItemType: trigger.tokenType,
-            .richTextItemId: item.id
-        ]
-        return NSAttributedString(string: text, attributes: attributes)
+        let richItem = buildRichTextItem(from: item, trigger: trigger)
+        return makeTokenAttributedString(item: richItem, tokenColor: trigger.tokenColor, font: font)
     }
     
     private func buildAttributedText(from content: RichTextContent) -> NSAttributedString {
@@ -109,16 +104,7 @@ public final class RichTextEditorViewModel: ObservableObject {
                 let trigger = configuration.allTriggers.first { $0.tokenType == item.type }
                 let tokenColor = trigger?.tokenColor ?? UIColor.systemBlue
                 
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: defaultFont,
-                    .foregroundColor: tokenColor,
-                    .richTextItemType: item.type,
-                    .richTextItemId: item.data
-                ]
-                let tokenAttrStr = NSMutableAttributedString(string: item.displayText, attributes: attrs)
-                
-                let binding = YYTextBinding(deleteConfirm: true)
-                tokenAttrStr.yy_setTextBinding(binding, range: NSRange(location: 0, length: tokenAttrStr.length))
+                let tokenAttrStr = makeTokenAttributedString(item: item, tokenColor: tokenColor, font: defaultFont)
                 
                 result.append(tokenAttrStr)
                 
@@ -171,7 +157,9 @@ public final class RichTextEditorViewModel: ObservableObject {
                     items.append(.text(currentText))
                     currentText = ""
                 }
-                let displayText = (attributedText.string as NSString).substring(with: range)
+                let rangeText = (attributedText.string as NSString).substring(with: range)
+                let storedText = attrs[.richTextItemDisplayText] as? String
+                let displayText = rangeText == "\u{FFFC}" ? (storedText ?? "") : rangeText
                 items.append(RichTextItem(type: itemType, displayText: displayText, data: itemId))
             } else {
                 let text = (attributedText.string as NSString).substring(with: range)
@@ -185,9 +173,100 @@ public final class RichTextEditorViewModel: ObservableObject {
         
         content = RichTextContent(items: items)
     }
+    
+    private func buildRichTextItem(from suggestion: any SuggestionItem, trigger: RichTextTrigger) -> RichTextItem {
+        if let config = configuration.tokenConfig(for: trigger.tokenType) {
+            return config.dataBuilder(suggestion)
+        }
+        let text = trigger.formatTokenText(item: suggestion)
+        return RichTextItem(type: trigger.tokenType, displayText: text, data: suggestion.id)
+    }
+    
+    private func makeTokenAttributedString(item: RichTextItem, tokenColor: UIColor, font: UIFont) -> NSMutableAttributedString {
+        if let config = configuration.tokenConfig(for: item.type),
+           let viewBuilder = config.viewBuilder,
+           let tokenView = viewBuilder(buildRenderContext(for: item, config: config), font) {
+            let hostingView = RichTextTokenHostingView(rootView: tokenView.view, preferredSize: tokenView.size, font: font)
+            let attachmentSize = hostingView.intrinsicContentSize
+            let attachment = NSAttributedString.yy_attachmentString(
+                withContent: hostingView,
+                contentMode: .center,
+                attachmentSize: attachmentSize,
+                alignTo: font,
+                alignment: .center
+            )
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .richTextItemType: item.type,
+                .richTextItemId: item.data,
+                .richTextItemDisplayText: item.displayText
+            ]
+            attachment.addAttributes(attrs, range: NSRange(location: 0, length: attachment.length))
+            attachment.yy_setTextBinding(YYTextBinding(deleteConfirm: true), range: NSRange(location: 0, length: attachment.length))
+            return attachment
+        }
+        
+        let attrs: [NSAttributedString.Key: Any] = [
+            .foregroundColor: tokenColor,
+            .font: font,
+            .richTextItemType: item.type,
+            .richTextItemId: item.data,
+            .richTextItemDisplayText: item.displayText
+        ]
+        let result = NSMutableAttributedString(string: item.displayText, attributes: attrs)
+        result.yy_setTextBinding(YYTextBinding(deleteConfirm: true), range: NSRange(location: 0, length: result.length))
+        return result
+    }
+    
+    private func buildRenderContext(for item: RichTextItem, config: RichTextTokenConfig) -> RichTextTokenRenderContext {
+        let payload = (config.payloadDecoder ?? RichTextTokenConfig.defaultPayloadDecoder)(item.data)
+        return RichTextTokenRenderContext(item: item, payload: payload)
+    }
+}
+
+final class RichTextTokenHostingView: UIView {
+    private let hostingController: UIHostingController<AnyView>
+    private let intrinsicSize: CGSize
+    
+    init(rootView: AnyView, preferredSize: CGSize?, font: UIFont) {
+        hostingController = UIHostingController(rootView: rootView)
+        
+        let measured = RichTextTokenHostingView.measureSize(hostingController: hostingController, font: font)
+        let finalSize = CGSize(
+            width: max(preferredSize?.width ?? measured.width, font.lineHeight),
+            height: max(preferredSize?.height ?? measured.height, font.lineHeight)
+        )
+        intrinsicSize = finalSize
+        
+        super.init(frame: CGRect(origin: .zero, size: finalSize))
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        hostingController.view.backgroundColor = .clear
+        hostingController.view.frame = bounds
+        hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        addSubview(hostingController.view)
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    override var intrinsicContentSize: CGSize {
+        intrinsicSize
+    }
+    
+    private static func measureSize(hostingController: UIHostingController<AnyView>, font: UIFont) -> CGSize {
+        let target = CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        let measured = hostingController.sizeThatFits(in: target)
+        if measured == .zero || measured.width.isNaN || measured.height.isNaN {
+            return CGSize(width: font.lineHeight * 2, height: font.lineHeight * 1.2)
+        }
+        return measured
+    }
 }
 
 public extension NSAttributedString.Key {
     static let richTextItemType = NSAttributedString.Key("richTextItemType")
     static let richTextItemId = NSAttributedString.Key("richTextItemId")
+    static let richTextItemDisplayText = NSAttributedString.Key("richTextItemDisplayText")
 }

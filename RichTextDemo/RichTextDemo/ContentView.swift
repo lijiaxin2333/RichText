@@ -6,7 +6,7 @@ struct ContentView: View {
     
     @StateObject private var viewModel: RichTextEditorViewModel
     @State private var showJSON = false
-    @State private var useCustomTokens = false
+    @State private var tokenStyle: TokenStyle = .default
     private let config: RichTextConfiguration
     
     init() {
@@ -163,8 +163,8 @@ struct ContentView: View {
                 )
                 StatusItem(
                     label: "Token 样式",
-                    value: useCustomTokens ? "自定义" : "默认",
-                    color: useCustomTokens ? Color(hex: "e94560") : Color.white.opacity(0.6)
+                    value: tokenStyleText,
+                    color: tokenStyleColor
                 )
             }
             
@@ -270,26 +270,7 @@ struct ContentView: View {
     
     private var actionSection: some View {
         VStack(spacing: 12) {
-            Button(action: { toggleCustomTokens() }) {
-                HStack(spacing: 8) {
-                    Image(systemName: useCustomTokens ? "sparkles" : "paintbrush")
-                    Text(useCustomTokens ? "切换为默认样式" : "启用自定义数据 + SwiftUI 样式")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    LinearGradient(
-                        colors: useCustomTokens
-                        ? [Color(hex: "95a5a6"), Color(hex: "7f8c8d")]
-                        : [Color(hex: "e94560"), Color(hex: "3498db")],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .cornerRadius(12)
-            }
+            tokenStyleSwitchers
             
             HStack(spacing: 16) {
                 Button(action: { viewModel.clearContent() }) {
@@ -436,6 +417,22 @@ struct ContentView: View {
         }
     }
     
+    private var tokenStyleText: String {
+        switch tokenStyle {
+        case .default: return "默认"
+        case .custom: return "自定义"
+        case .capsule: return "等高胶囊"
+        }
+    }
+    
+    private var tokenStyleColor: Color {
+        switch tokenStyle {
+        case .default: return Color.white.opacity(0.6)
+        case .custom: return Color(hex: "e94560")
+        case .capsule: return Color(hex: "2ecc71")
+        }
+    }
+    
     private var contentJSON: String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -446,20 +443,20 @@ struct ContentView: View {
         return "{}"
     }
     
-    private func toggleCustomTokens() {
-        useCustomTokens.toggle()
-        applyTokenCustomization(useCustomTokens)
-        viewModel.setContent(viewModel.content) // 触发当前内容重绘
-    }
-    
-    private func applyTokenCustomization(_ enabled: Bool) {
-        if enabled {
-            config.registerToken(type: "mention", config: mentionCustomConfig())
-            config.registerToken(type: "topic", config: topicCustomConfig())
-        } else {
+    private func applyTokenStyle(_ style: TokenStyle) {
+        tokenStyle = style
+        switch style {
+        case .default:
             config.unregisterToken(type: "mention")
             config.unregisterToken(type: "topic")
+        case .custom:
+            config.registerToken(type: "mention", config: mentionCustomConfig())
+            config.registerToken(type: "topic", config: topicCustomConfig())
+        case .capsule:
+            config.registerToken(type: "mention", config: mentionCapsuleConfig())
+            config.registerToken(type: "topic", config: topicCapsuleConfig())
         }
+        viewModel.setContent(viewModel.content) // 触发当前内容重绘
     }
     
     private func mentionCustomConfig() -> RichTextTokenConfig {
@@ -573,6 +570,98 @@ struct ContentView: View {
         guard let data = text.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(CustomTokenPayload.self, from: data)
     }
+    
+    private func mentionCapsuleConfig() -> RichTextTokenConfig {
+        RichTextTokenConfig(
+            dataBuilder: { suggestion in
+                let name = suggestion.displayName
+                let id = suggestion.id
+                let payload = CapsuleTokenPayload(id: id, name: name, avatarSeed: suggestion.id, icon: "bolt.fill")
+                let data = encodeCapsulePayload(payload) ?? id
+                return RichTextItem(type: "mention", displayText: "@\(name)", data: data)
+            },
+            payloadDecoder: { data in decodeCapsulePayload(data)?.asDict },
+            viewBuilder: { context, font in
+                capsuleTokenView(context: context, font: font)
+            }
+        )
+    }
+    
+    private func topicCapsuleConfig() -> RichTextTokenConfig {
+        RichTextTokenConfig(
+            dataBuilder: { suggestion in
+                let name = suggestion.displayName
+                let id = suggestion.id
+                let payload = CapsuleTokenPayload(id: id, name: name, avatarSeed: suggestion.id, icon: "tag")
+                let data = encodeCapsulePayload(payload) ?? id
+                return RichTextItem(type: "topic", displayText: "#\(name)#", data: data)
+            },
+            payloadDecoder: { data in decodeCapsulePayload(data)?.asDict },
+            viewBuilder: { context, font in
+                capsuleTokenView(context: context, font: font)
+            }
+        )
+    }
+    
+    @ViewBuilder
+    private func capsuleTokenView(context: RichTextTokenRenderContext, font: UIFont) -> RichTextTokenView? {
+        let name = context.payload?["name"] ?? context.item.displayText
+        let id = context.payload?["id"] ?? context.item.data
+        let seed = context.payload?["avatarSeed"] ?? id
+        let icon = context.payload?["icon"] ?? "bolt.fill"
+        let lineHeight = font.lineHeight
+        let avatarSize = lineHeight * 0.8
+        let paddingX = lineHeight * 0.35
+        
+        return RichTextTokenView(
+            HStack(spacing: 8) {
+                AsyncImage(url: URL(string: "https://picsum.photos/seed/\(seed)/80")) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    case .failure(_):
+                        Color.gray.opacity(0.3)
+                    case .empty:
+                        Color.gray.opacity(0.2)
+                    @unknown default:
+                        Color.gray.opacity(0.2)
+                    }
+                }
+                .frame(width: avatarSize, height: avatarSize)
+                .clipShape(Circle())
+                
+                Text(name)
+                    .font(.system(size: font.pointSize, weight: .semibold))
+                    .foregroundColor(.white)
+                Text(id)
+                    .font(.system(size: font.pointSize * 0.9))
+                    .foregroundColor(.white.opacity(0.8))
+                Image(systemName: icon)
+                    .font(.system(size: font.pointSize * 0.9, weight: .bold))
+                    .foregroundColor(Color(hex: "f1c40f"))
+            }
+            .padding(.horizontal, paddingX)
+            .frame(height: lineHeight)
+            .background(
+                Capsule()
+                    .fill(Color(hex: "0f3460"))
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.3), lineWidth: 0.8)
+                    )
+            )
+        )
+    }
+    
+    private func encodeCapsulePayload(_ payload: CapsuleTokenPayload) -> String? {
+        guard let data = try? JSONEncoder().encode(payload) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+    
+    private func decodeCapsulePayload(_ text: String) -> CapsuleTokenPayload? {
+        guard let data = text.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(CapsuleTokenPayload.self, from: data)
+    }
 }
 
 struct FeatureBadge: View {
@@ -640,6 +729,44 @@ struct PreviewRow: View {
     }
 }
 
+private enum TokenStyle {
+    case `default`
+    case custom
+    case capsule
+}
+
+extension ContentView {
+    private var tokenStyleSwitchers: some View {
+        HStack(spacing: 10) {
+            tokenStyleButton(title: "默认样式", systemImage: "circle", style: .default, colors: [Color(hex: "95a5a6"), Color(hex: "7f8c8d")])
+            tokenStyleButton(title: "自定义样式", systemImage: "paintbrush", style: .custom, colors: [Color(hex: "e94560"), Color(hex: "3498db")])
+            tokenStyleButton(title: "等高胶囊", systemImage: "capsule.fill", style: .capsule, colors: [Color(hex: "2ecc71"), Color(hex: "27ae60")])
+        }
+    }
+    
+    private func tokenStyleButton(title: String, systemImage: String, style: TokenStyle, colors: [Color]) -> some View {
+        Button(action: { applyTokenStyle(style) }) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
+                    .opacity(tokenStyle == style ? 1.0 : 0.55)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.white.opacity(tokenStyle == style ? 0.35 : 0.2), lineWidth: tokenStyle == style ? 1.2 : 0.6)
+            )
+            .cornerRadius(10)
+        }
+    }
+}
+
 struct CustomTokenPayload: Codable {
     let id: String
     let name: String
@@ -649,6 +776,22 @@ struct CustomTokenPayload: Codable {
         var result: [String: String] = ["id": id, "name": name]
         if let extra = extra { result["extra"] = extra }
         return result
+    }
+}
+
+struct CapsuleTokenPayload: Codable {
+    let id: String
+    let name: String
+    let avatarSeed: String
+    let icon: String
+    
+    var asDict: [String: String] {
+        [
+            "id": id,
+            "name": name,
+            "avatarSeed": avatarSeed,
+            "icon": icon
+        ]
     }
 }
 

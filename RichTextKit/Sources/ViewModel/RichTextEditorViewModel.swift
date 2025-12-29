@@ -12,6 +12,22 @@ public final class RichTextEditorViewModel: ObservableObject {
     @Published public private(set) var searchKeyword: String = ""
     @Published public internal(set) var pendingAttributedText: NSAttributedString?
     @Published public var isEditable: Bool = true
+
+    /// 点击富文本 token（例如 @提及、#话题#）的回调。
+    /// - Note: 只有在 token 的 attributed string 上设置了点击高亮（YYTextHighlight）时才会触发。
+    public var onTokenTap: ((RichTextItem) -> Void)?
+
+    /// 统一处理 token 点击：若对应 type 配置了 `RichTextTokenConfig.onTap`，则优先走该回调；
+    /// 否则回退到 `onTokenTap`（全局回调）。
+    public func handleTokenTap(item: RichTextItem) {
+        if let config = configuration.tokenConfig(for: item.type),
+           let onTap = config.onTap {
+            let context = buildRenderContext(for: item, config: config)
+            onTap(context)
+            return
+        }
+        onTokenTap?(item)
+    }
     
     private var triggerLocation: Int = 0
     
@@ -183,6 +199,11 @@ public final class RichTextEditorViewModel: ObservableObject {
     }
     
     private func makeTokenAttributedString(item: RichTextItem, tokenColor: UIColor, font: UIFont) -> NSMutableAttributedString {
+        let tapAction: YYTextAction = { [weak self] _, _, _, _ in
+            self?.handleTokenTap(item: item)
+        }
+        let highlightBackground = UIColor.systemGray.withAlphaComponent(0.18)
+
         if let config = configuration.tokenConfig(for: item.type),
            let viewBuilder = config.viewBuilder,
            let tokenView = viewBuilder(buildRenderContext(for: item, config: config), font) {
@@ -203,6 +224,12 @@ public final class RichTextEditorViewModel: ObservableObject {
             ]
             attachment.addAttributes(attrs, range: NSRange(location: 0, length: attachment.length))
             attachment.yy_setTextBinding(YYTextBinding(deleteConfirm: true), range: NSRange(location: 0, length: attachment.length))
+            attachment.yy_setTextHighlight(
+                NSRange(location: 0, length: attachment.length),
+                color: nil,
+                backgroundColor: highlightBackground,
+                tapAction: tapAction
+            )
             return attachment
         }
         
@@ -215,6 +242,12 @@ public final class RichTextEditorViewModel: ObservableObject {
         ]
         let result = NSMutableAttributedString(string: item.displayText, attributes: attrs)
         result.yy_setTextBinding(YYTextBinding(deleteConfirm: true), range: NSRange(location: 0, length: result.length))
+        result.yy_setTextHighlight(
+            NSRange(location: 0, length: result.length),
+            color: nil,
+            backgroundColor: highlightBackground,
+            tapAction: tapAction
+        )
         return result
     }
     

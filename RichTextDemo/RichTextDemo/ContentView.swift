@@ -7,6 +7,9 @@ struct ContentView: View {
     @StateObject private var viewModel: RichTextEditorViewModel
     @State private var showJSON = false
     @State private var tokenStyle: TokenStyle = .default
+    @State private var didSetupTokenConfigs = false
+    @State private var showTapToast = false
+    @State private var tapToastMessage: String = ""
     private let config: RichTextConfiguration
     
     init() {
@@ -49,7 +52,18 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .preferredColorScheme(.dark)
+        .alert("提示", isPresented: $showTapToast) {
+            Button("确定", role: .cancel) {}
+        } message: {
+            Text(tapToastMessage)
+        }
         .onAppear {
+            // 确保默认样式在首次展示时就注册 token config（否则默认样式下点击回调不会触发，
+            // 只有切换一次样式触发 registerToken 之后才会生效）。
+            if !didSetupTokenConfigs {
+                didSetupTokenConfigs = true
+                applyTokenStyle(tokenStyle)
+            }
             let appearance = UINavigationBarAppearance()
             appearance.configureWithOpaqueBackground()
             appearance.backgroundColor = UIColor(Color(hex: "1a1a2e"))
@@ -447,8 +461,9 @@ struct ContentView: View {
         tokenStyle = style
         switch style {
         case .default:
-            config.unregisterToken(type: "mention")
-            config.unregisterToken(type: "topic")
+            // 默认样式：不自定义 view，但仍然用 config 统一处理点击与数据构建
+            config.registerToken(type: "mention", config: mentionDefaultConfig())
+            config.registerToken(type: "topic", config: topicDefaultConfig())
         case .custom:
             config.registerToken(type: "mention", config: mentionCustomConfig())
             config.registerToken(type: "topic", config: topicCustomConfig())
@@ -457,6 +472,32 @@ struct ContentView: View {
             config.registerToken(type: "topic", config: topicCapsuleConfig())
         }
         viewModel.setContent(viewModel.content) // 触发当前内容重绘
+    }
+
+    private func mentionDefaultConfig() -> RichTextTokenConfig {
+        RichTextTokenConfig(
+            dataBuilder: { suggestion in
+                RichTextItem(type: "mention", displayText: "@\(suggestion.displayName)", data: suggestion.id)
+            },
+            onTap: { context in
+                let text = context.item.displayText
+                tapToastMessage = "点击了：\(text)\n(type: \(context.item.type), id: \(context.item.data))"
+                showTapToast = true
+            }
+        )
+    }
+
+    private func topicDefaultConfig() -> RichTextTokenConfig {
+        RichTextTokenConfig(
+            dataBuilder: { suggestion in
+                RichTextItem(type: "topic", displayText: "#\(suggestion.displayName)#", data: suggestion.id)
+            },
+            onTap: { context in
+                let text = context.item.displayText
+                tapToastMessage = "点击了：\(text)\n(type: \(context.item.type), id: \(context.item.data))"
+                showTapToast = true
+            }
+        )
     }
     
     private func mentionCustomConfig() -> RichTextTokenConfig {
@@ -506,6 +547,11 @@ struct ContentView: View {
                             )
                     )
                 )
+            },
+            onTap: { context in
+                let text = context.payload?["name"].map { "@\($0)" } ?? context.item.displayText
+                tapToastMessage = "点击了：\(text)\n(type: \(context.item.type), id: \(context.item.data))"
+                showTapToast = true
             }
         )
     }
@@ -557,6 +603,11 @@ struct ContentView: View {
                             )
                     )
                 )
+            },
+            onTap: { context in
+                let text = context.payload?["name"].map { "#\($0)#" } ?? context.item.displayText
+                tapToastMessage = "点击了：\(text)\n(type: \(context.item.type), id: \(context.item.data))"
+                showTapToast = true
             }
         )
     }
@@ -583,6 +634,11 @@ struct ContentView: View {
             payloadDecoder: { data in decodeCapsulePayload(data)?.asDict },
             viewBuilder: { context, font in
                 capsuleTokenView(context: context, font: font)
+            },
+            onTap: { context in
+                let text = context.payload?["name"].map { "@\($0)" } ?? context.item.displayText
+                tapToastMessage = "点击了：\(text)\n(type: \(context.item.type), id: \(context.item.data))"
+                showTapToast = true
             }
         )
     }
@@ -599,11 +655,15 @@ struct ContentView: View {
             payloadDecoder: { data in decodeCapsulePayload(data)?.asDict },
             viewBuilder: { context, font in
                 capsuleTokenView(context: context, font: font)
+            },
+            onTap: { context in
+                let text = context.payload?["name"].map { "#\($0)#" } ?? context.item.displayText
+                tapToastMessage = "点击了：\(text)\n(type: \(context.item.type), id: \(context.item.data))"
+                showTapToast = true
             }
         )
     }
     
-    @ViewBuilder
     private func capsuleTokenView(context: RichTextTokenRenderContext, font: UIFont) -> RichTextTokenView? {
         let name = context.payload?["name"] ?? context.item.displayText
         let id = context.payload?["id"] ?? context.item.data

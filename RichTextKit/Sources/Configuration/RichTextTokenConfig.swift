@@ -7,19 +7,25 @@ public struct RichTextTokenConfig {
     public typealias DataBuilder = (_ suggestion: any SuggestionItem) -> RichTextItem
     public typealias PayloadDecoder = (_ data: String) -> [String: String]?
     public typealias ViewBuilder = (_ context: RichTextTokenRenderContext, _ font: UIFont) -> RichTextTokenView?
+    public typealias TapHandler = (_ context: RichTextTokenRenderContext) -> Void
     
     public let dataBuilder: DataBuilder
     public let payloadDecoder: PayloadDecoder?
     public let viewBuilder: ViewBuilder?
+    /// 当用户点击该 token 时触发（编辑态与只读态均支持）。
+    /// - Note: 若配置了该回调，会优先于 `RichTextEditorView(onTokenTap:)` 的全局回调执行。
+    public let onTap: TapHandler?
     
     public init(
         dataBuilder: @escaping DataBuilder,
         payloadDecoder: PayloadDecoder? = nil,
-        viewBuilder: ViewBuilder? = nil
+        viewBuilder: ViewBuilder? = nil,
+        onTap: TapHandler? = nil
     ) {
         self.dataBuilder = dataBuilder
         self.payloadDecoder = payloadDecoder
         self.viewBuilder = viewBuilder
+        self.onTap = onTap
     }
     
     /// 默认 JSON 解码器，约定 data 为 JSON 串
